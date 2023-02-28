@@ -55,70 +55,70 @@ function toggleComponents(enable, disableAll) {
 
 // Disconnect a gradio mutation observer, update the element value, and reconnect the observer?
 function updateInputValue(elements, newValue) {
-  const savedListeners = [];
-  const savedObservers = [];
+    const savedListeners = [];
+    const savedObservers = [];
 
-  elements.forEach((element) => {
-    // Save any existing listeners and remove them
-    const listeners = [];
-    const events = ['change', 'input'];
-    events.forEach((event) => {
-      if (element['on' + event]) {
-        listeners.push({
-          event,
-          listener: element['on' + event],
+    elements.forEach((element) => {
+        // Save any existing listeners and remove them
+        const listeners = [];
+        const events = ['change', 'input'];
+        events.forEach((event) => {
+            if (element['on' + event]) {
+                listeners.push({
+                    event,
+                    listener: element['on' + event],
+                });
+                element['on' + event] = null;
+            }
+            const eventListeners = element.getEventListeners?.(event);
+            if (eventListeners) {
+                eventListeners.forEach(({ listener }) => {
+                    listeners.push({
+                        event,
+                        listener,
+                    });
+                    element.removeEventListener(event, listener);
+                });
+            }
         });
-        element['on' + event] = null;
-      }
-      const eventListeners = element.getEventListeners?.(event);
-      if (eventListeners) {
-        eventListeners.forEach(({ listener }) => {
-          listeners.push({
-            event,
-            listener,
-          });
-          element.removeEventListener(event, listener);
+        savedListeners.push(listeners);
+
+        // Save any existing MutationObservers and disconnect them
+        const observer = new MutationObserver(() => { });
+        if (observer && element.tagName === 'INPUT') {
+            observer.observe(element, {
+                attributes: true,
+                attributeFilter: ['value'],
+            });
+            savedObservers.push(observer);
+            observer.disconnect();
+        } else {
+            savedObservers.push(null);
+        }
+
+        // Update the value of the element
+        element.value = newValue;
+    });
+
+    // Restore any saved listeners and MutationObservers
+    savedListeners.forEach((listeners, i) => {
+        const element = elements[i];
+        listeners.forEach(({ event, listener }) => {
+            if (listener) {
+                element.addEventListener(event, listener);
+            }
         });
-      }
     });
-    savedListeners.push(listeners);
 
-    // Save any existing MutationObservers and disconnect them
-    const observer = new MutationObserver(() => {});
-    if (observer && element.tagName === 'INPUT') {
-      observer.observe(element, {
-        attributes: true,
-        attributeFilter: ['value'],
-      });
-      savedObservers.push(observer);
-      observer.disconnect();
-    } else {
-      savedObservers.push(null);
-    }
-
-    // Update the value of the element
-    element.value = newValue;
-  });
-
-  // Restore any saved listeners and MutationObservers
-  savedListeners.forEach((listeners, i) => {
-    const element = elements[i];
-    listeners.forEach(({ event, listener }) => {
-      if (listener) {
-        element.addEventListener(event, listener);
-      }
+    savedObservers.forEach((observer, i) => {
+        const element = elements[i];
+        if (observer) {
+            observer.observe(element, {
+                attributes: true,
+                attributeFilter: ['value'],
+            });
+        }
     });
-  });
-
-  savedObservers.forEach((observer, i) => {
-    const element = elements[i];
-    if (observer) {
-      observer.observe(element, {
-        attributes: true,
-        attributeFilter: ['value'],
-      });
-    }
-  });
 }
 
 
@@ -434,105 +434,112 @@ let db_titles = {
     "Use LORA": "Uses Low-rank Adaptation for Fast Text-to-Image Diffusion Fine-tuning. Uses less VRAM, saves a .pt file instead of a full checkpoint",
     "Use Lifetime Epochs When Saving": "When checked, will save preview images and checkpoints using lifetime epochs, versus current training epochs.",
     "Use Lifetime Steps When Saving": "When checked, will save preview images and checkpoints using lifetime steps, versus current training steps.",
-}
+    "Init Decay Epochs": "The number of epochs to use for the initial learning rate decay.",
+    "Min Decay LR": "The minimum learning rate to use for the initial learning rate decay.",
+    "Restart Interval:": "The number of epochs to train before restarting the training process.",
+    "Restart LR": "The learning rate to use when restarting the training process.",
+    "Warmup Epochs": "The number of epochs to use for the initial learning rate warmup.",
+    "Warmup Start Epoch": "The epoch to start the initial learning rate warmup.",
+    "Noise Train Scheduler": "The scheduler to use for the noise during training.",
 
-// Do a thing when the UI updates
-onUiUpdate(function () {
-    let db_active = document.getElementById("db_active");
-    if (db_active) {
-        db_active.parentElement.style.display = "none";
-    }
 
-    let cm = getRealElement("change_modal");
-    let cl = getRealElement("change_log");
-    if (cm && cl) {
-        if (cl.innerHTML !== "" && modalShown !== true) {
-            modalShown = true;
-            cm.classList.add("active");
-        }
-    }
-
-    let errors = getRealElement("launch_errors");
-    if (errors !== null && errors !== undefined && !locked && errors.innerHTML !== "") {
-        let hr = getRealElement("hint_row");
-        hr.innerHTML = errors.innerHTML;
-        toggleComponents(false, true);
-    }
-
-    if (closeBtn === null || closeBtn === undefined) {
-        let cb = getRealElement("close_modal");
-        closeBtn = cb;
-        if (cb && cm) {
-            toggleComponents(false, false);
-            cb.addEventListener("click", function () {
-                cm.classList.remove("active");
-            });
-        }
-    }
-
-    db_progressbar();
-
-    gradioApp().querySelectorAll('span, button, select, p').forEach(function (span) {
-        let tooltip = db_titles[span.textContent];
-        if (span.disabled || span.classList.contains(".\\!cursor-not-allowed")) {
-            tooltip = "Select or Create a Model."
+    // Do a thing when the UI updates
+    onUiUpdate(function() {
+        let db_active = document.getElementById("db_active");
+        if (db_active) {
+            db_active.parentElement.style.display = "none";
         }
 
-        if (!tooltip) {
-            tooltip = db_titles[span.value];
-        }
-
-        if (!tooltip) {
-            for (const c of span.classList) {
-                if (c in db_titles) {
-                    tooltip = db_titles[c];
-                    break;
-                }
+        let cm = getRealElement("change_modal");
+        let cl = getRealElement("change_log");
+        if (cm && cl) {
+            if (cl.innerHTML !== "" && modalShown !== true) {
+                modalShown = true;
+                cm.classList.add("active");
             }
         }
 
-        if (tooltip) {
-            span.title = tooltip;
+        let errors = getRealElement("launch_errors");
+        if (errors !== null && errors !== undefined && !locked && errors.innerHTML !== "") {
+            let hr = getRealElement("hint_row");
+            hr.innerHTML = errors.innerHTML;
+            toggleComponents(false, true);
         }
 
-    });
-
-    gradioApp().querySelectorAll('select').forEach(function (select) {
-        if (select.onchange != null) return;
-        select.onchange = function () {
-            select.title = db_titles[select.value] || "";
-        }
-    });
-
-    gradioApp().querySelectorAll('.gallery-item').forEach(function (btn) {
-        if (btn.onchange != null) return;
-        btn.onchange = function () {
-            // Dummy function, so we don't keep setting up the observer.
-        }
-        checkPrompts();
-        const options = {
-            attributes: true
+        if (closeBtn === null || closeBtn === undefined) {
+            let cb = getRealElement("close_modal");
+            closeBtn = cb;
+            if (cb && cm) {
+                toggleComponents(false, false);
+                cb.addEventListener("click", function () {
+                    cm.classList.remove("active");
+                });
+            }
         }
 
-        function callback(mutationList, observer) {
-            mutationList.forEach(function (mutation) {
-                if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
-                    checkPrompts();
+        db_progressbar();
+
+        gradioApp().querySelectorAll('span, button, select, p').forEach(function (span) {
+            let tooltip = db_titles[span.textContent];
+            if (span.disabled || span.classList.contains(".\\!cursor-not-allowed")) {
+                tooltip = "Select or Create a Model."
+            }
+
+            if (!tooltip) {
+                tooltip = db_titles[span.value];
+            }
+
+            if (!tooltip) {
+                for (const c of span.classList) {
+                    if (c in db_titles) {
+                        tooltip = db_titles[c];
+                        break;
+                    }
                 }
-            });
+            }
+
+            if (tooltip) {
+                span.title = tooltip;
+            }
+
+        });
+
+        gradioApp().querySelectorAll('select').forEach(function (select) {
+            if (select.onchange != null) return;
+            select.onchange = function () {
+                select.title = db_titles[select.value] || "";
+            }
+        });
+
+        gradioApp().querySelectorAll('.gallery-item').forEach(function (btn) {
+            if (btn.onchange != null) return;
+            btn.onchange = function () {
+                // Dummy function, so we don't keep setting up the observer.
+            }
+            checkPrompts();
+            const options = {
+                attributes: true
+            }
+
+            function callback(mutationList, observer) {
+                mutationList.forEach(function (mutation) {
+                    if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
+                        checkPrompts();
+                    }
+                });
+            }
+
+            const observer = new MutationObserver(callback);
+            observer.observe(btn, options);
+
+        });
+        try {
+            handleNumberInputs();
+        } catch (e) {
+            console.log("Gotcha: ", e);
         }
 
-        const observer = new MutationObserver(callback);
-        observer.observe(btn, options);
-
     });
-    try {
-        handleNumberInputs();
-    } catch (e) {
-        console.log("Gotcha: ", e);
-    }
-
-});
 
 function checkPrompts() {
     let prevSelectedIndex = selected_gallery_index();
@@ -641,7 +648,7 @@ function db_progressbar() {
             }
 
         });
-        mutationObserver.observe(progressbar, {childList: true, subtree: true});
+        mutationObserver.observe(progressbar, { childList: true, subtree: true });
     }
 }
 
@@ -690,7 +697,7 @@ function checkDbGallery() {
                 }
             }
         })
-        galleryObserver.observe(gallery, {childList: true, subtree: false});
+        galleryObserver.observe(gallery, { childList: true, subtree: false });
         gallerySet = true;
 
     }

@@ -5,14 +5,18 @@ from typing import List, Dict
 
 from pydantic import BaseModel
 
-from extensions.sd_dreambooth_extension.dreambooth.utils.image_utils import get_scheduler_names
+from extensions.sd_dreambooth_extension.dreambooth.utils.image_utils import (
+    get_scheduler_names,
+)
 
 try:
     from extensions.sd_dreambooth_extension.dreambooth import shared
-    from extensions.sd_dreambooth_extension.dreambooth.dataclasses.db_concept import Concept
+    from extensions.sd_dreambooth_extension.dreambooth.dataclasses.db_concept import (
+        Concept,
+    )
 except:
-    from dreambooth.dreambooth import shared # noqa
-    from dreambooth.dreambooth.dataclasses.db_concept import Concept # noqa
+    from dreambooth.dreambooth import shared  # noqa
+    from dreambooth.dreambooth.dataclasses.db_concept import Concept  # noqa
 
 # Keys to save, replacing our dumb __init__ method
 save_keys = []
@@ -34,6 +38,7 @@ class DreamboothConfig(BaseModel):
     concepts_path: str = ""
     custom_model_name: str = ""
     deis_train_scheduler: bool = False
+    noise_train_scheduler: str = "DDIM"
     deterministic: bool = False
     ema_predict: bool = False
     epoch: int = 0
@@ -66,6 +71,12 @@ class DreamboothConfig(BaseModel):
     lr_scale_pos: float = 0.5
     lr_scheduler: str = "constant_with_warmup"
     lr_warmup_steps: int = 0
+    init_decay_epochs: int = 0
+    min_decay: float = 0.01
+    restart_interval: int = 0
+    restart_lr: float = 0.06
+    warmup_epochs: int = 40
+    warmup_start_lr: float = 0.3
     max_token_length: int = 75
     mixed_precision: str = "fp16"
     model_name: str = ""
@@ -117,8 +128,14 @@ class DreamboothConfig(BaseModel):
     use_subdir: bool = False
     v2: bool = False
 
-    def __init__(self, model_name: str = "", v2: bool = False, src: str = "",
-                 resolution: int = 512, **kwargs):
+    def __init__(
+        self,
+        model_name: str = "",
+        v2: bool = False,
+        src: str = "",
+        resolution: int = 512,
+        **kwargs,
+    ):
 
         super().__init__(**kwargs)
         model_name = sanitize_name(model_name)
@@ -156,7 +173,9 @@ class DreamboothConfig(BaseModel):
             backup_dir = os.path.join(models_path, "backups")
             if not os.path.exists(backup_dir):
                 os.makedirs(backup_dir)
-            config_file = os.path.join(models_path, "backups", f"db_config_{self.revision}.json")
+            config_file = os.path.join(
+                models_path, "backups", f"db_config_{self.revision}.json"
+            )
         with open(config_file, "w") as outfile:
             json.dump(self.__dict__, outfile, indent=4)
 
@@ -198,7 +217,9 @@ class DreamboothConfig(BaseModel):
             concept = Concept(input_dict=concept_dict)
             if concept.is_valid:
                 if concept.class_data_dir == "" or concept.class_data_dir is None:
-                    concept.class_data_dir = os.path.join(self.model_dir, f"classifiers_{c_idx}")
+                    concept.class_data_dir = os.path.join(
+                        self.model_dir, f"classifiers_{c_idx}"
+                    )
                 concepts.append(concept)
                 c_idx += 1
 
@@ -214,7 +235,9 @@ class DreamboothConfig(BaseModel):
                 self.revision = 0
             if self.epoch == "" or self.epoch is None:
                 self.epoch = 0
-            self.model_name = "".join(x for x in self.model_name if (x.isalnum() or x in "._- "))
+            self.model_name = "".join(
+                x for x in self.model_name if (x.isalnum() or x in "._- ")
+            )
             models_path = shared.dreambooth_models_path
             if models_path == "" or models_path is None:
                 models_path = os.path.join(shared.models_path, "dreambooth")
@@ -235,7 +258,7 @@ class DreamboothConfig(BaseModel):
             models_path = os.path.join(shared.models_path, "dreambooth")
         config_file = os.path.join(models_path, self.model_name, "db_config.json")
         try:
-            with open(config_file, 'r') as openfile:
+            with open(config_file, "r") as openfile:
                 config_dict = json.load(openfile)
 
             self.load_params(config_dict)
@@ -293,7 +316,9 @@ def save_config(*args):
             concept_test = Concept(concept_dict)
             if concept_test.is_valid:
                 concepts_list.append(concept_test.__dict__)
-        existing_concepts = params_dict["concepts_list"] if "concepts_list" in params_dict else []
+        existing_concepts = (
+            params_dict["concepts_list"] if "concepts_list" in params_dict else []
+        )
         if len(concepts_list) and not len(existing_concepts):
             params_dict["concepts_list"] = concepts_list
 
@@ -320,7 +345,7 @@ def from_file(model_name):
         models_path = os.path.join(shared.models_path, "dreambooth")
     config_file = os.path.join(models_path, model_name, "db_config.json")
     try:
-        with open(config_file, 'r') as openfile:
+        with open(config_file, "r") as openfile:
             config_dict = json.load(openfile)
 
         config = DreamboothConfig(model_name)
@@ -331,6 +356,3 @@ def from_file(model_name):
         print(f"Exception loading config: {e}")
         traceback.print_exc()
         return None
-
-
-
