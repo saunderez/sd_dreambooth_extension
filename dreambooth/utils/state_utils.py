@@ -1,6 +1,7 @@
 import os
-import torch
-import DBConfig
+from torch import Accelerator, Optimizer, Scheduler
+from dreambooth import shared  # noqa
+from dreambooth.dataclasses.db_config import DreamboothConfig  # noqa
 
 class DBState:
 
